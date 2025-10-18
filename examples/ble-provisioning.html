@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 BLE Provisioning Example</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+      }
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      input {
+        padding: 8px;
+        margin: 5px;
+        width: 200px;
+      }
+      #log {
+        margin-top: 20px;
+        padding: 10px;
+        background-color: #f5f5f5;
+        border-radius: 4px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        margin: 5px 0;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .error {
+        color: red;
+      }
+      .success {
+        color: green;
+      }
+      .info {
+        color: blue;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ESP32 BLE Provisioning</h1>
+
+    <div>
+      <h3>Step 1: Search for Device</h3>
+      <input type="text" id="devicePrefix" value="PROV_" placeholder="Device prefix" />
+      <button id="searchBtn" onclick="searchDevice()">Search Device</button>
+    </div>
+
+    <div>
+      <h3>Step 2: Connect</h3>
+      <input type="text" id="pop" placeholder="Proof of Possession" />
+      <button id="connectBtn" onclick="connectDevice()" disabled>Connect</button>
+    </div>
+
+    <div>
+      <h3>Step 3: Scan WiFi Networks</h3>
+      <button id="scanBtn" onclick="scanWifi()" disabled>Scan WiFi</button>
+      <div id="wifiList"></div>
+    </div>
+
+    <div>
+      <h3>Step 4: Provision</h3>
+      <input type="text" id="ssid" placeholder="WiFi SSID" />
+      <input type="password" id="password" placeholder="WiFi Password" />
+      <button id="provisionBtn" onclick="provision()" disabled>Provision</button>
+    </div>
+
+    <div>
+      <h3>Log</h3>
+      <div id="log"></div>
+    </div>
+
+    <script type="module">
+      // Import from the compiled dist files
+      import {
+        ESPProvisionManager,
+        ESPWifiStaState,
+        FALLBACK_SERVICE_UUID,
+      } from '../dist/index.es.js';
+
+      let device = null;
+
+      window.searchDevice = async function () {
+        const prefix = document.getElementById('devicePrefix').value;
+        log('Searching for devices...', 'info');
+
+        try {
+          device = await ESPProvisionManager.searchBLEDevice({
+            filters: [{ namePrefix: prefix }, { services: [FALLBACK_SERVICE_UUID] }],
+            optionalServices: [FALLBACK_SERVICE_UUID],
+          });
+
+          if (device) {
+            log(`Found device: ${device.getDevice().name}`, 'success');
+            document.getElementById('connectBtn').disabled = false;
+          } else {
+            log('No devices found', 'error');
+          }
+        } catch (error) {
+          log(`Error: ${error.message}`, 'error');
+        }
+      };
+
+      window.connectDevice = async function () {
+        const pop = document.getElementById('pop').value;
+        log('Connecting to device...', 'info');
+
+        try {
+          await device.connect();
+          log('Connected successfully', 'success');
+          document.getElementById('scanBtn').disabled = false;
+          document.getElementById('provisionBtn').disabled = false;
+        } catch (error) {
+          log(`Connection error: ${error.message}`, 'error');
+        }
+      };
+
+      window.scanWifi = async function () {
+        log('Scanning WiFi networks...', 'info');
+
+        try {
+          const networks = await device.scanWifiList();
+
+          const wifiListDiv = document.getElementById('wifiList');
+          if (networks.length > 0) {
+            wifiListDiv.innerHTML =
+              '<ul>' + networks.map((n) => `<li>${n.ssid} (${n.rssi} dBm)</li>`).join('') + '</ul>';
+            log(`Found ${networks.length} networks`, 'success');
+          } else {
+            wifiListDiv.innerHTML = '<p>No networks found</p>';
+            log('No networks found', 'info');
+          }
+        } catch (error) {
+          log(`Scan error: ${error.message}`, 'error');
+        }
+      };
+
+      window.provision = async function () {
+        const ssid = document.getElementById('ssid').value;
+        const password = document.getElementById('password').value;
+
+        if (!ssid) {
+          log('Please enter WiFi SSID', 'error');
+          return;
+        }
+
+        log('Provisioning device...', 'info');
+
+        try {
+          await device.provision(ssid, password);
+          log('Provision request sent', 'info');
+        } catch (error) {
+          log(`Send provision request error: ${error.message}`, 'error');
+        }
+
+        try {
+          let result;
+          do {
+            result = await device.fetchWifiStatus();
+            log(`Poll WiFi Status: ${result.staState}`, 'info');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } while (result.staState !== ESPWifiStaState.connecting);
+
+          if (result.staState === ESPWifiStaState.failed) {
+            log(`Device failed to connect to WiFi. Reason: ${result.failedReason}`, 'error');
+            return;
+          }
+        } catch (error) {
+          log(`Watch WiFi status error: ${error.message}`, 'error');
+          return;
+        }
+
+        log('Provisioning successful');
+      };
+
+      function log(message, type = 'info') {
+        const logDiv = document.getElementById('log');
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      // Check Bluetooth support on load
+      if (!ESPProvisionManager.isBluetoothSupported()) {
+        log('Web Bluetooth is not supported in this browser', 'error');
+        document.getElementById('searchBtn').disabled = true;
+      } else {
+        log('Web Bluetooth is supported', 'success');
+      }
+    </script>
+  </body>
+</html>

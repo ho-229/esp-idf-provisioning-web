@@ -1,0 +1,60 @@
+{
+  "name": "esp-idf-provisioning-web",
+  "version": "0.0.1",
+  "description": "ESP-IDF WiFi Provisioning SDK for web browsers",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "pbjs -t static-module -w es6 -o src/generated/proto.js src/proto/*.proto && pbts -o src/generated/proto.d.ts src/generated/proto.js",
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "dev": "vite build --watch",
+    "example": "npx http-server -p 8080 -o /examples/ble-provisioning.html",
+    "serve": "npx http-server -p 8080",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "keywords": [
+    "esp32",
+    "esp-idf",
+    "provisioning",
+    "wifi",
+    "ble",
+    "bluetooth",
+    "web-bluetooth",
+    "softap",
+    "iot"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "protobufjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/web-bluetooth": "0.0.21",
+    "@typescript-eslint/eslint-plugin": "8.46.2",
+    "@typescript-eslint/parser": "8.46.2",
+    "eslint": "9.38.0",
+    "jest": "30.2.0",
+    "prettier": "^3.0.0",
+    "protobufjs-cli": "^1.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0",
+    "vite": "7.1.11"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ho-229/esp-idf-provisioning-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ho-229/esp-idf-provisioning-web/issues"
+  }
+}
