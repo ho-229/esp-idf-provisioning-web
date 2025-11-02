@@ -142,6 +142,28 @@ export class ESPDevice implements ESPDeviceInterface {
   }
 
   /**
+   * Send custom data to device
+   * @param path - Data endpoint path
+   * @param data - Data to send
+   * @returns Response data from device
+   */
+  async sendData(path: string, data: Uint8Array): Promise<Uint8Array> {
+    if (!this.transportImpl || !this.securityImpl) {
+      throw new Error('Device not connected');
+    }
+
+    // Encrypt data if security is established
+    const encryptedData = await this.securityImpl.encrypt(data);
+    console.debug('Send encrypted data length:', encryptedData.length);
+
+    // Send encrypted data
+    const encryptedResponse = await this.transportImpl.sendData(path, encryptedData);
+
+    // Decrypt response
+    return await this.securityImpl.decrypt(encryptedResponse);
+  }
+
+  /**
    * Disconnect from device
    */
   disconnect(): void {
@@ -205,27 +227,5 @@ export class ESPDevice implements ESPDeviceInterface {
       );
     }
     await this.transportImpl.connect();
-  }
-
-  /**
-   * Send custom data to device
-   * @param path - Data endpoint path
-   * @param data - Data to send
-   * @returns Response data from device
-   */
-  private async sendData(path: string, data: Uint8Array): Promise<Uint8Array> {
-    if (!this.transportImpl || !this.securityImpl) {
-      throw new Error('Device not connected');
-    }
-
-    // Encrypt data if security is established
-    const encryptedData = await this.securityImpl.encrypt(data);
-    console.debug('Send encrypted data length:', encryptedData.length);
-
-    // Send encrypted data
-    const encryptedResponse = await this.transportImpl.sendData(path, encryptedData);
-
-    // Decrypt response
-    return await this.securityImpl.decrypt(encryptedResponse);
   }
 }

@@ -82,6 +82,23 @@
     </div>
 
     <div>
+      <h3>Custom Data</h3>
+      <input
+        type="text"
+        id="endpoint"
+        placeholder="Endpoint (e.g. prov-config)"
+        value="prov-config"
+      />
+      <select id="format">
+        <option value="text">Text</option>
+        <option value="hex">Hex</option>
+      </select>
+      <input type="text" id="payload" placeholder="Payload (text or hex)" style="width: 300px" />
+      <button id="sendDataBtn" onclick="sendCustomData()" disabled>Send Custom Data</button>
+      <div id="sendDataResult"></div>
+    </div>
+
+    <div>
       <h3>Log</h3>
       <div id="log"></div>
     </div>
@@ -126,6 +143,7 @@
           log('Connected successfully', 'success');
           document.getElementById('scanBtn').disabled = false;
           document.getElementById('provisionBtn').disabled = false;
+          document.getElementById('sendDataBtn').disabled = false;
         } catch (error) {
           log(`Connection error: ${error.message}`, 'error');
         }
@@ -189,6 +207,49 @@
         log('Provisioning successful');
       };
 
+      window.sendCustomData = async function () {
+        if (!device) {
+          log('No device selected', 'error');
+          return;
+        }
+
+        const endpoint = document.getElementById('endpoint').value || '';
+        const format = document.getElementById('format').value;
+        const payload = document.getElementById('payload').value || '';
+        let data;
+
+        try {
+          if (format === 'hex') {
+            data = hexToBytes(payload);
+          } else {
+            data = new TextEncoder().encode(payload);
+          }
+        } catch (err) {
+          log(`Payload parse error: ${err.message}`, 'error');
+          return;
+        }
+
+        document.getElementById('sendDataBtn').disabled = true;
+        log(`Sending custom data to ${endpoint} (${data.length} bytes)`, 'info');
+
+        try {
+          const resp = await device.sendData(endpoint, data);
+          const hex = bytesToHex(resp);
+          const text = tryDecodeText(resp);
+          const resultDiv = document.getElementById('sendDataResult');
+          resultDiv.innerHTML =
+            `<p>Response (hex): <code>${hex}</code></p>` +
+            (text ? `<p>Response (text): <code>${text}</code></p>` : '');
+          log(`Received ${resp.length} bytes`, 'success');
+          log(`Response (hex): ${hex}`, 'info');
+          if (text) log(`Response (text): ${text}`, 'info');
+        } catch (err) {
+          log(`sendData error: ${err.message}`, 'error');
+        } finally {
+          document.getElementById('sendDataBtn').disabled = false;
+        }
+      };
+
       function log(message, type = 'info') {
         const logDiv = document.getElementById('log');
         const entry = document.createElement('div');
@@ -204,6 +265,34 @@
         document.getElementById('searchBtn').disabled = true;
       } else {
         log('Web Bluetooth is supported', 'success');
+      }
+      // Ensure send button disabled if no device
+      if (!device) document.getElementById('sendDataBtn').disabled = true;
+
+      // Helpers for converting between hex and Uint8Array
+      function hexToBytes(hex) {
+        if (!hex) return new Uint8Array(0);
+        hex = hex.replace(/\s+/g, '');
+        if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
+        const bytes = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < hex.length; i += 2) {
+          bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+        }
+        return bytes;
+      }
+
+      function bytesToHex(bytes) {
+        return Array.from(bytes)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      function tryDecodeText(bytes) {
+        try {
+          return new TextDecoder().decode(bytes);
+        } catch (e) {
+          return null;
+        }
       }
     </script>
   </body>

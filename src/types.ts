@@ -76,11 +76,13 @@ export interface ESPDeviceInterface {
 
   scanWifiList(): Promise<ESPWifiAp[]>;
 
-  disconnect(): void;
-
   provision(ssid: string, passphrase: string): Promise<void>;
 
   fetchWifiStatus(): Promise<ESPWifiStatus>;
+
+  sendData(path: string, data: Uint8Array): Promise<Uint8Array>;
+
+  disconnect(): void;
 
   getDevice(): BluetoothDevice | URL;
 }

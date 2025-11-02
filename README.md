@@ -13,7 +13,7 @@ A TypeScript SDK for provisioning ESP32 devices from web browsers using the ESP-
   - [x] Scan APs
   - [x] Provision device status monitoring
   - [ ] Reset and re-provisioning
-  - [ ] Custom endpoints
+  - [x] Custom endpoints
 
 ## Browser Compatibility
 
