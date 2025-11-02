@@ -1,6 +1,6 @@
 {
   "name": "esp-idf-provisioning-web",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "ESP-IDF WiFi Provisioning SDK for web browsers",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
