@@ -2,9 +2,16 @@
   "name": "esp-idf-provisioning-web",
   "version": "0.0.2",
   "description": "ESP-IDF WiFi Provisioning SDK for web browsers",
-  "main": "dist/index.js",
-  "module": "dist/index.esm.js",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.es.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs.js"
+    }
+  },
   "scripts": {
     "prebuild": "pbjs -t static-module -w es6 -o src/generated/proto.js src/proto/*.proto && pbts -o src/generated/proto.d.ts src/generated/proto.js",
     "build": "vite build && tsc --emitDeclarationOnly",

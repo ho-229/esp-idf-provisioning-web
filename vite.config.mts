@@ -6,8 +6,8 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'ESPProvisioningWeb',
-      formats: ['es'],
-      fileName: () => 'index.es.js'
+      formats: ['es', 'cjs'],
+      fileName: (format) => (format === 'es' ? 'index.es.js' : 'index.cjs.js')
     },
     outDir: 'dist',
     rollupOptions: {
