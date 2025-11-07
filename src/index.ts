@@ -16,12 +16,11 @@ export { ESPProvisionManager } from './ESPProvisionManager';
 export {
   ESPWifiAuthMode,
   ESPWifiStaState,
+  ESPConnectFailReason,
   type ESPDeviceInterface,
   type ESPSecurity1Config,
   type ESPSecurity2Config,
   type ESPWifiAp,
-  type ESPScanStatusResponse as ESPStatusResponse,
-  type ESPConnectFailReason,
   type ESPWifiStatus,
 } from './types';
 
