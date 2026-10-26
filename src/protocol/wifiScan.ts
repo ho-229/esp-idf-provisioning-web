@@ -9,7 +9,7 @@ export function getScanStartRequest(
   groupChannels: number = 5,
   periodMs: number = 120
 ): Uint8Array {
-  let cmd = proto.CmdScanStart.create({});
+  const cmd = proto.CmdScanStart.create({});
   cmd.blocking = blocking;
   cmd.passive = passive;
   cmd.groupChannels = groupChannels;
@@ -51,13 +51,13 @@ export function processScanStatusResponse(response: Uint8Array): ESPScanStatusRe
       scanFinished: result.scanFinished,
       count: result.resultCount,
     };
-  } catch (error) {
+  } catch {
     throw new Error('Failed to decode scan status response');
   }
 }
 
 export function getScanResultRequest(index: number, count: number): Uint8Array {
-  let cmd = proto.CmdScanResult.create({});
+  const cmd = proto.CmdScanResult.create({});
   cmd.startIndex = index;
   cmd.count = count;
   const scanRequest = proto.WiFiScanPayload.create({
@@ -85,7 +85,7 @@ export function processScanResultResponse(response: Uint8Array): ESPWifiAp[] {
       };
     });
     return wifiList;
-  } catch (error) {
+  } catch {
     throw new Error('Failed to decode scan result response');
   }
 }

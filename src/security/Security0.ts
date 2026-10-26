@@ -16,7 +16,7 @@ export class Security0 extends Security {
   }
 
   async getSessionSetupRequest(): Promise<Uint8Array> {
-    let setupReq = proto.SessionData.create({});
+    const setupReq = proto.SessionData.create({});
     setupReq.secVer = proto.SecSchemeVersion.SecScheme0;
     setupReq.sec0 = proto.Sec0Payload.create({
       msg: proto.Sec0MsgType.S0_Session_Command,

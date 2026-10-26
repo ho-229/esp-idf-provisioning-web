@@ -1,3 +1,5 @@
+/// <reference types="web-bluetooth" preserve="true" />
+
 /**
  * ESP-IDF Provisioning Web SDK
  *

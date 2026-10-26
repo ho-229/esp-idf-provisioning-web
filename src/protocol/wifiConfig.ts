@@ -4,7 +4,7 @@ import { bytesToHex, bytesToString, stringToBytes } from '../utils/crypto.js';
 import { wifiAuthModeToESPWifiAuthMode } from './protocol.js';
 
 export function getConfigStatusRequest(): Uint8Array {
-  let configRequest = proto.WiFiConfigPayload.create({});
+  const configRequest = proto.WiFiConfigPayload.create({});
   configRequest.msg = proto.WiFiConfigMsgType.TypeCmdGetStatus;
   configRequest.cmdGetStatus = proto.CmdGetStatus.create({});
   return proto.WiFiConfigPayload.encode(configRequest).finish();
@@ -61,13 +61,13 @@ export function processConfigStatusResponse(response: Uint8Array): ESPWifiStatus
       failedReason,
       connected,
     };
-  } catch (error) {
+  } catch {
     throw new Error('Failed to decode config status response');
   }
 }
 
 export function getConfigUpdateRequest(ssid: string, passphrase: string): Uint8Array {
-  let configRequest = proto.WiFiConfigPayload.create({});
+  const configRequest = proto.WiFiConfigPayload.create({});
   configRequest.msg = proto.WiFiConfigMsgType.TypeCmdSetConfig;
   configRequest.cmdSetConfig = proto.CmdSetConfig.create({
     ssid: stringToBytes(ssid),
@@ -83,13 +83,13 @@ export function processConfigUpdateResponse(response: Uint8Array): void {
     if (result.status !== proto.Status.Success) {
       throw new Error(`Config update failed: ${result.status}`);
     }
-  } catch (error) {
+  } catch {
     throw new Error('Failed to decode config update response');
   }
 }
 
 export function getConfigApplyRequest(): Uint8Array {
-  let configRequest = proto.WiFiConfigPayload.create({});
+  const configRequest = proto.WiFiConfigPayload.create({});
   configRequest.msg = proto.WiFiConfigMsgType.TypeCmdApplyConfig;
   configRequest.cmdApplyConfig = proto.CmdApplyConfig.create({});
   return proto.WiFiConfigPayload.encode(configRequest).finish();
@@ -102,7 +102,7 @@ export function processConfigApplyResponse(response: Uint8Array): void {
     if (result.status !== proto.Status.Success) {
       throw new Error(`Config apply failed: ${result.status}`);
     }
-  } catch (error) {
+  } catch {
     throw new Error('Failed to decode config apply response');
   }
 }

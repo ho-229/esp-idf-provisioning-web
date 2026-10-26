@@ -163,6 +163,10 @@ if (ESPProvisionManager.isBluetoothSupported()) {
 
 ## Development
 
+Use Node.js 24 LTS to build and lint the SDK.
+`npm pack` and `npm publish` rebuild the generated protocol code, bundles and
+type declarations before packaging.
+
 ```bash
 # Install dependencies
 npm install
