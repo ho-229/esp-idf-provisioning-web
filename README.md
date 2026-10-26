@@ -153,13 +153,26 @@ if (ESPProvisionManager.isBluetoothSupported()) {
 - Requires user interaction (button click) to initiate device scanning
 - User must manually select device from browser's device picker
 - HTTPS or localhost required for Web Bluetooth API
-- Service UUID must be filled in optionalServiceUUIDs for some browsers
+- The provisioning service UUID must be included in `filters[].services` or `optionalServices`
 
 ### SoftAP Mode
 - Browser cannot connect to WiFi networks programmatically
 - User must manually connect to ESP device's access point
 - CORS may need to be configured on the ESP device
 - May not work on all networks due to browser security restrictions
+
+## FAQ
+
+### Which BLE service UUID should I use?
+
+`FALLBACK_SERVICE_UUID` comes from [ESP-IDF's default provisioning service](https://github.com/espressif/esp-idf/blob/v5.3.3/components/wifi_provisioning/src/scheme_ble.c#L117-L123),
+not a Bluetooth SIG standard. If your firmware calls
+`wifi_prov_scheme_ble_set_service_uuid()`, pass the same UUID in
+`filters[].services` or `optionalServices` to `searchBLEDevice()`.
+
+The SDK tries the default service first. If it is absent or unauthorized, it
+searches authorized services for `prov-session` and `proto-ver`. Endpoint names
+are read from the `0x2901` descriptors; no fixed endpoint UUID mapping is used.
 
 ## Development
 
@@ -176,6 +189,9 @@ npm run build
 
 # Lint
 npm run lint
+
+# Build and run provisioning transport tests with simulated GATT services
+npm test
 
 # Format
 npm run format
