@@ -14,7 +14,7 @@ export class SoftAPTransport extends Transport {
    */
   constructor(baseUrl: string) {
     super();
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
   async connect(): Promise<void> {
@@ -54,7 +54,7 @@ export class SoftAPTransport extends Transport {
           'Accept': 'text/plain',
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: data.buffer as ArrayBuffer,
+        body: new Uint8Array(data),
         mode: 'cors',
       });
 

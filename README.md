@@ -4,8 +4,8 @@ A TypeScript SDK for provisioning ESP32 devices from web browsers using the ESP-
 
 ## Features
 
-- [ ] **Multiple Security Modes**
-  - [ ] Security1 (not implemented)
+- [x] **Security 0 and Security 1**
+  - [x] Security1: X25519 + PoP + AES-256-CTR
   - [ ] Security2 (not implemented)
 - [x] **BLE Transport**: Uses Web Bluetooth API for wireless provisioning
 - [x] **SoftAP Transport**: HTTP-based provisioning for devices in AP mode
@@ -28,39 +28,98 @@ npm install esp-idf-provisioning-web
 
 ## Usage
 
-### BLE Provisioning
+### BLE with Security 0
+
+Security 0 sends provisioning data without application-layer encryption. Use it
+only when the device is configured for Security 0.
 
 ```typescript
 import { ESPProvisionManager } from 'esp-idf-provisioning-web';
 
-// Search for devices with BLE
 const device = await ESPProvisionManager.searchBLEDevice();
-
-// Connect with proof of possession
 await device.connect();
-
-// Scan for WiFi networks
-const wifiList = await device.scanWifiList();
-
-// Provision the device
+const networks = await device.scanWifiList();
 await device.provision('MyWiFiSSID', 'MyWiFiPassword');
+// Poll fetchWifiStatus() until connected or failed, then disconnect.
+```
 
-// Wait for STA connected
-let result;
+Runnable example: [BLE Security 0](examples/ble-provisioning.html).
+
+### BLE with Security 1
+
+Security 1 uses X25519, proof of possession (PoP), and AES-256-CTR. Supply the
+PoP expected by the device:
+
+```typescript
+import { ESPProvisionManager } from 'esp-idf-provisioning-web';
+
+const device = await ESPProvisionManager.searchBLEDevice();
+await device.connect({
+  type: 'Security1',
+  proofOfPossession: 'device-proof-of-possession',
+});
+const networks = await device.scanWifiList();
+await device.provision('MyWiFiSSID', 'MyWiFiPassword');
+// Poll fetchWifiStatus() until connected or failed, then disconnect.
+```
+
+Runnable example: [BLE Security 1](examples/ble-provisioning-security1.html).
+
+### Resolve Security 1 credentials asynchronously
+
+`connect()` reads the public `proto-ver` endpoint before starting the handshake.
+Pass a resolver to obtain credentials using the returned protocol and application
+metadata. `requestProofOfPossession` below is supplied by the consuming application:
+
+```typescript
+await device.connect(async (info) => {
+  if (info.prov.sec_ver !== 1) throw new Error('Expected Security 1');
+  const proofOfPossession = await requestProofOfPossession(info);
+  return { type: 'Security1', proofOfPossession };
+});
+```
+
+The SDK passes through custom metadata without interpreting it. Credential
+retrieval and authorization belong to the consuming application.
+
+A new `connect()` call reads fresh metadata and runs the resolver again. Failed
+authentication, resolver failure, or transport failure clears the session; retry
+with `connect()`. There is no automatic downgrade to Security 0. Security 2 is
+unsupported.
+
+### Custom endpoints and connection status
+
+After connecting with either security mode, use the same APIs for application
+endpoints and Wi-Fi status. Custom endpoints use the established security mode:
+
+```typescript
+const response = await device.sendData(
+  'custom-data', new TextEncoder().encode('{"command":"get"}')
+);
+```
+
+Requests are serialized because Security 1 shares one continuous AES-CTR stream
+across both directions. `sendData('proto-ver', ...)` remains plaintext;
+`prov-session` is managed internally. Other endpoints require a completed handshake.
+
+```typescript
+import { ESPWifiStaState } from 'esp-idf-provisioning-web';
+
+let status;
 do {
-  result = await device.fetchWifiStatus();
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-} while (result.staState !== ESPWifiStaState.connecting);
+  status = await device.fetchWifiStatus();
+  if (status.staState === ESPWifiStaState.connecting) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+} while (status.staState === ESPWifiStaState.connecting);
 
-if (result.staState === ESPWifiStaState.connected) {
-  console.log('Provisioning successful!');
-} else {
-  console.log('Provisioning failed:', result);
-}
-
-// Disconnect
 device.disconnect();
 ```
+
+Security 1 requires a secure browser context and native Web Crypto **X25519**
+support. Unsupported browsers fail the handshake instead of falling back to
+plaintext. See the [Web Crypto specification](https://www.w3.org/TR/webcrypto/)
+and [ESP-IDF protocol documentation](https://docs.espressif.com/projects/esp-idf/en/v5.3.3/esp32s3/api-reference/provisioning/provisioning.html).
 
 ### SoftAP Provisioning
 

@@ -22,12 +22,14 @@ export class Security0 extends Security {
       msg: proto.Sec0MsgType.S0_Session_Command,
       sc: proto.S0SessionCmd.create({})
     });
-    return proto.Sec0Payload.encode(setupReq).finish();
+    return proto.SessionData.encode(setupReq).finish();
   }
 
   async processSessionSetupResponse(response: Uint8Array): Promise<void> {
     const setupResp = proto.SessionData.decode(response);
-    if (setupResp.secVer === proto.SecSchemeVersion.SecScheme0 && setupResp.sec0) {
+    if (setupResp.secVer === proto.SecSchemeVersion.SecScheme0 &&
+        setupResp.sec0?.msg === proto.Sec0MsgType.S0_Session_Response &&
+        setupResp.sec0.sr?.status === proto.Status.Success) {
       this.established = true;
     } else {
       throw new Error('Invalid session setup response for Security0');

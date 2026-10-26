@@ -3,12 +3,16 @@ import {
   ESPWifiAp,
   ESPWifiStatus,
   ESPSecurityConfig,
+  ESPSecurityResolver,
+  ESPProvisioningInfo,
 } from './types';
 import { Transport } from './transport/Transport';
 import { BLETransport } from './transport/BLETransport';
 import { SoftAPTransport } from './transport/SoftAPTransport';
 import { Security } from './security/Security';
 import { Security0 } from './security/Security0';
+import { Security1 } from './security/Security1';
+import { bytesToString, stringToBytes } from './utils/crypto';
 import { FALLBACK_NU_LOOKUP, FALLBACK_SERVICE_UUID, PROTO_ENDPOINTS } from './constants';
 import {
   getScanResultRequest,
@@ -34,6 +38,7 @@ export class ESPDevice implements ESPDeviceInterface {
   private device: BluetoothDevice | URL;
   private transportImpl?: Transport;
   private securityImpl?: Security;
+  private requestQueue: Promise<void> = Promise.resolve();
 
   /**
    * Create a new ESPDevice instance
@@ -43,22 +48,47 @@ export class ESPDevice implements ESPDeviceInterface {
     this.device = device;
   }
 
-  /**
-   * Connect to the device
-   * @param proofOfPossession - Proof of possession for secure modes
-   * @param softAPPassword - Password for SoftAP mode (not used in browser)
-   * @param username - Username for authentication
-   */
-  async connect(security?: ESPSecurityConfig): Promise<void> {
-    // Initialize transport
-    await this.initializeTransport();
-
-    // Initialize security
-    this.initializeSecurity(security);
-
-    // Establish secure session if needed
-    if (security) {
-      await this.establishSession();
+  /** Connect, read public metadata, resolve credentials, then complete the handshake. */
+  async connect(security?: ESPSecurityConfig | ESPSecurityResolver): Promise<void> {
+    if (this.transportImpl) throw new Error('Device already connected or connecting');
+    const transport = this.device instanceof URL
+      ? new SoftAPTransport(this.device.toString())
+      : new BLETransport(this.device, FALLBACK_SERVICE_UUID, new Map(Object.entries(FALLBACK_NU_LOOKUP)));
+    this.transportImpl = transport;
+    try {
+      await transport.connect();
+      const response = await transport.sendData(PROTO_ENDPOINTS.PROTO_VER, stringToBytes('ESP'));
+      const info: ESPProvisioningInfo = JSON.parse(bytesToString(response));
+      if (!info || !info.prov || typeof info.prov !== 'object' || Array.isArray(info.prov)) {
+        throw new Error('Invalid proto-ver metadata');
+      }
+      if (this.transportImpl !== transport || !transport.isConnected()) {
+        throw new Error('Device disconnected during discovery');
+      }
+      const config = typeof security === 'function' ? await security(info) : security;
+      if (this.transportImpl !== transport || !transport.isConnected()) {
+        throw new Error('Device disconnected while resolving security');
+      }
+      const version = config?.type === 'Security1' ? 1 : config?.type === 'Security2' ? 2 : 0;
+      if (info.prov.sec_ver !== undefined && info.prov.sec_ver !== version) {
+        throw new Error(`Device requires Security${info.prov.sec_ver}; provide a matching security configuration`);
+      }
+      let session: Security;
+      if (!config) {
+        session = new Security0();
+      } else if (config.type === 'Security1') {
+        session = new Security1(config.proofOfPossession, info.prov.sec_patch_ver);
+      } else {
+        throw new Error('Unsupported security configuration');
+      }
+      await this.establishSession(transport, session);
+      if (this.transportImpl !== transport || !transport.isConnected()) {
+        throw new Error('Device disconnected during handshake');
+      }
+      this.securityImpl = session;
+    } catch (error) {
+      if (this.transportImpl === transport) this.disconnect();
+      throw error;
     }
   }
 
@@ -148,19 +178,30 @@ export class ESPDevice implements ESPDeviceInterface {
    * @returns Response data from device
    */
   async sendData(path: string, data: Uint8Array): Promise<Uint8Array> {
-    if (!this.transportImpl || !this.securityImpl) {
-      throw new Error('Device not connected');
-    }
+    const transport = this.transportImpl;
+    const security = this.securityImpl;
+    if (!transport || !security?.isEstablished()) throw new Error('Device not connected');
+    if (path === PROTO_ENDPOINTS.PROV_SESSION) throw new Error('Session endpoint is managed by connect()');
 
-    // Encrypt data if security is established
-    const encryptedData = await this.securityImpl.encrypt(data);
-    console.debug('Send encrypted data length:', encryptedData.length);
-
-    // Send encrypted data
-    const encryptedResponse = await this.transportImpl.sendData(path, encryptedData);
-
-    // Decrypt response
-    return await this.securityImpl.decrypt(encryptedResponse);
+    // Security1 shares one CTR stream in both directions. Serialize the entire
+    // request/response pair, including custom endpoints.
+    const request = this.requestQueue.then(async () => {
+      if (this.transportImpl !== transport || this.securityImpl !== security || !transport.isConnected()) {
+        throw new Error('Device disconnected');
+      }
+      try {
+        if (path === PROTO_ENDPOINTS.PROTO_VER) return await transport.sendData(path, data);
+        const encrypted = await security.encrypt(data);
+        const response = await transport.sendData(path, encrypted);
+        return await security.decrypt(response);
+      } catch (error) {
+        // A lost response leaves the shared cipher position unknown.
+        if (this.transportImpl === transport) this.disconnect();
+        throw error;
+      }
+    });
+    this.requestQueue = request.then(() => {}, () => {});
+    return request;
   }
 
   /**
@@ -172,6 +213,7 @@ export class ESPDevice implements ESPDeviceInterface {
       this.transportImpl = undefined;
     }
     this.securityImpl = undefined;
+    this.requestQueue = Promise.resolve();
   }
 
   /**
@@ -181,51 +223,14 @@ export class ESPDevice implements ESPDeviceInterface {
     return this.device;
   }
 
-  /**
-   * Initialize security layer based on security type
-   */
-  private initializeSecurity(security?: ESPSecurityConfig): void {
-    if (!security) {
-      this.securityImpl = new Security0();
-    } else {
-      throw new Error('Unsupported security configuration');
+  private async establishSession(transport: Transport, security: Security): Promise<void> {
+    while (!security.isEstablished()) {
+      if (this.transportImpl !== transport || !transport.isConnected()) {
+        throw new Error('Device disconnected during handshake');
+      }
+      const request = await security.getSessionSetupRequest();
+      const response = await transport.sendData(PROTO_ENDPOINTS.PROV_SESSION, request);
+      await security.processSessionSetupResponse(response);
     }
-  }
-
-  /**
-   * Establish secure session with device
-   */
-  private async establishSession(): Promise<void> {
-    if (!this.transportImpl || !this.securityImpl) {
-      throw new Error('Transport or security not initialized');
-    }
-
-    // Get session setup request
-    const setupRequest = await this.securityImpl.getSessionSetupRequest();
-
-    // Send session setup request
-    const setupResponse = await this.transportImpl.sendData(
-      PROTO_ENDPOINTS.PROV_SESSION,
-      setupRequest
-    );
-
-    // Process session setup response
-    await this.securityImpl.processSessionSetupResponse(setupResponse);
-  }
-
-  /**
-   * Initialize transport layer based on transport type
-   */
-  private async initializeTransport(): Promise<void> {
-    if (this.device instanceof URL) {
-      this.transportImpl = new SoftAPTransport(this.device.toString());
-    } else {  // BluetoothDevice
-      this.transportImpl = new BLETransport(
-        this.device,
-        FALLBACK_SERVICE_UUID,
-        new Map(Object.entries(FALLBACK_NU_LOOKUP))
-      );
-    }
-    await this.transportImpl.connect();
   }
 }

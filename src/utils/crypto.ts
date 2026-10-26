@@ -49,7 +49,7 @@ export function bytesToString(bytes: Uint8Array): string {
  * SHA-256 hash function
  */
 export async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', new Uint8Array(data));
   return new Uint8Array(hashBuffer);
 }
 
@@ -59,12 +59,12 @@ export async function sha256(data: Uint8Array): Promise<Uint8Array> {
 export async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key.buffer as ArrayBuffer,
+    new Uint8Array(key),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data.buffer as ArrayBuffer);
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, new Uint8Array(data));
   return new Uint8Array(signature);
 }
 
@@ -78,15 +78,15 @@ export async function aesEncrypt(
 ): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key.buffer as ArrayBuffer,
+    new Uint8Array(key),
     { name: 'AES-CTR' },
     false,
     ['encrypt']
   );
   const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-CTR', counter: counter.buffer as ArrayBuffer, length: 128 },
+    { name: 'AES-CTR', counter: new Uint8Array(counter), length: 128 },
     cryptoKey,
-    data.buffer as ArrayBuffer
+    new Uint8Array(data)
   );
   return new Uint8Array(encrypted);
 }
@@ -101,15 +101,15 @@ export async function aesDecrypt(
 ): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key.buffer as ArrayBuffer,
+    new Uint8Array(key),
     { name: 'AES-CTR' },
     false,
     ['decrypt']
   );
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-CTR', counter: counter.buffer as ArrayBuffer, length: 128 },
+    { name: 'AES-CTR', counter: new Uint8Array(counter), length: 128 },
     cryptoKey,
-    data.buffer as ArrayBuffer
+    new Uint8Array(data)
   );
   return new Uint8Array(decrypted);
 }
@@ -126,4 +126,38 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
     offset += arr.length;
   }
   return result;
+}
+
+/** Stateful AES-CTR, preserving partial blocks across requests and responses. */
+export class AESCTRStream {
+  private offset = 0;
+
+  private constructor(private key: CryptoKey, private counter: Uint8Array<ArrayBuffer>) {}
+
+  static async create(key: Uint8Array, counter: Uint8Array): Promise<AESCTRStream> {
+    if (key.length !== 32 || counter.length !== 16) throw new Error('Invalid AES-256-CTR parameters');
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', new Uint8Array(key), 'AES-CTR', false, ['encrypt']
+    );
+    return new AESCTRStream(cryptoKey, new Uint8Array(counter));
+  }
+
+  async update(data: Uint8Array): Promise<Uint8Array> {
+    // Web Crypto restarts at a block boundary. Skip the already-consumed bytes
+    // of the current block to match mbedTLS's continuous stream in both directions.
+    const input = new Uint8Array(this.offset + data.length);
+    input.set(data, this.offset);
+    const output = await crypto.subtle.encrypt(
+      { name: 'AES-CTR', counter: this.counter, length: 128 }, this.key, input
+    );
+    const result = new Uint8Array(output).slice(this.offset);
+    let blocks = Math.floor(input.length / 16);
+    for (let i = this.counter.length - 1; i >= 0 && blocks > 0; i--) {
+      const sum = this.counter[i] + blocks;
+      this.counter[i] = sum & 0xff;
+      blocks = Math.floor(sum / 256);
+    }
+    this.offset = input.length % 16;
+    return result;
+  }
 }

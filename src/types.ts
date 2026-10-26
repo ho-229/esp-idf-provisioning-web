@@ -1,3 +1,19 @@
+/** Public proto-ver metadata, including application-defined capability lists. */
+export interface ESPProvisioningMetadata {
+  ver?: string;
+  cap?: string[];
+}
+
+export interface ESPProvisioningInfo {
+  prov: ESPProvisioningMetadata & { sec_ver?: number; sec_patch_ver?: number };
+  [name: string]: ESPProvisioningMetadata;
+}
+
+/** Resolve the security configuration after reading public discovery data. */
+export type ESPSecurityResolver = (
+  info: ESPProvisioningInfo
+) => ESPSecurityConfig | undefined | Promise<ESPSecurityConfig | undefined>;
+
 export type ESPSecurityConfig = ESPSecurity1Config | ESPSecurity2Config;
 
 export interface ESPSecurity1Config {
@@ -72,7 +88,7 @@ export interface ESPScanStatusResponse {
  * Device interface for ESP provisioning
  */
 export interface ESPDeviceInterface {
-  connect(security?: ESPSecurityConfig): Promise<void>;
+  connect(security?: ESPSecurityConfig | ESPSecurityResolver): Promise<void>;
 
   scanWifiList(): Promise<ESPWifiAp[]>;
 
