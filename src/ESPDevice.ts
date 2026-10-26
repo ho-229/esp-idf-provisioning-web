@@ -13,7 +13,7 @@ import { Security } from './security/Security';
 import { Security0 } from './security/Security0';
 import { Security1 } from './security/Security1';
 import { bytesToString, stringToBytes } from './utils/crypto';
-import { FALLBACK_NU_LOOKUP, FALLBACK_SERVICE_UUID, PROTO_ENDPOINTS } from './constants';
+import { PROTO_ENDPOINTS } from './constants';
 import {
   getScanResultRequest,
   getScanStartRequest,
@@ -53,7 +53,7 @@ export class ESPDevice implements ESPDeviceInterface {
     if (this.transportImpl) throw new Error('Device already connected or connecting');
     const transport = this.device instanceof URL
       ? new SoftAPTransport(this.device.toString())
-      : new BLETransport(this.device, FALLBACK_SERVICE_UUID, new Map(Object.entries(FALLBACK_NU_LOOKUP)));
+      : new BLETransport(this.device);
     this.transportImpl = transport;
     try {
       await transport.connect();

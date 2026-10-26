@@ -18,6 +18,7 @@
     "dev": "vite build --watch",
     "example": "npx http-server -p 8080 -o /examples/ble-provisioning.html",
     "serve": "npx http-server -p 8080",
+    "pretest": "npm run build",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",

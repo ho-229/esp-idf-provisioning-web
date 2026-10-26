@@ -1,5 +1,5 @@
 import { Transport } from './Transport';
-// import { BLE_SERVICE_UUID, BLE_PROVISIONING_UUID, BLE_SESSION_UUID } from '../constants';
+import { FALLBACK_SERVICE_UUID, PROTO_ENDPOINTS } from '../constants';
 import { bytesToString } from '../utils/crypto';
 
 /**
@@ -7,18 +7,15 @@ import { bytesToString } from '../utils/crypto';
  */
 export class BLETransport extends Transport {
   private device: BluetoothDevice;
-  private serviceUUID: string;
-  private nuLookup: Map<string, string>;
+  private nuLookup = new Map<string, string>();
 
   private server?: BluetoothRemoteGATTServer;
   private service?: BluetoothRemoteGATTService;
   private connected: boolean = false;
 
-  constructor(device: BluetoothDevice, serviceUUID: string, nuLookup: Map<string, string>) {
+  constructor(device: BluetoothDevice) {
     super();
     this.device = device;
-    this.serviceUUID = serviceUUID;
-    this.nuLookup = nuLookup;
   }
 
   async connect(): Promise<void> {
@@ -33,36 +30,51 @@ export class BLETransport extends Transport {
         throw new Error('Failed to connect to GATT server');
       }
 
-      // Get provisioning services
+      // Prefer the default service, then discover other services authorized by requestDevice().
+      let services: BluetoothRemoteGATTService[];
       try {
-        const services = await this.server.getPrimaryServices(this.serviceUUID);
-        if (services.length > 1) {
-          const service = services.find((s) => s.uuid === this.serviceUUID);
-          if (!service) {
-            throw new Error(`Service with UUID ${this.serviceUUID} not found`);
-          }
-          this.service = service;
-        } else {
-          this.service = services[0];
-        }
+        services = await this.server.getPrimaryServices(FALLBACK_SERVICE_UUID);
       } catch (error) {
-        throw new Error(`Failed to get primary services: ${error}`);
+        if (!['NotFoundError', 'SecurityError'].includes((error as Error).name)) throw error;
+        services = await this.server.getPrimaryServices();
       }
 
-      const characteristics = await this.service.getCharacteristics();
-      for (const char of characteristics) {
-        const descriptors = await char.getDescriptors();
-        for (const desc of descriptors) {
-          if (desc.uuid.slice(4, 8) !== '2901') continue;
-          const rawName = await desc.readValue();
-          this.nuLookup.set(bytesToString(new Uint8Array(rawName.buffer)).toLowerCase(), char.uuid);
+      for (const service of services) {
+        const nuLookup = new Map<string, string>();
+        let characteristics: BluetoothRemoteGATTCharacteristic[];
+        try {
+          characteristics = await service.getCharacteristics();
+        } catch (error) {
+          if ((error as Error).name === 'NotFoundError') continue;
+          throw error;
+        }
+        for (const char of characteristics) {
+          let descriptors: BluetoothRemoteGATTDescriptor[];
+          try {
+            descriptors = await char.getDescriptors();
+          } catch (error) {
+            if ((error as Error).name === 'NotFoundError') continue;
+            throw error;
+          }
+          for (const desc of descriptors) {
+            if (desc.uuid.slice(4, 8) !== '2901') continue;
+            const rawName = await desc.readValue();
+            const name = bytesToString(new Uint8Array(rawName.buffer, rawName.byteOffset, rawName.byteLength));
+            nuLookup.set(name.toLowerCase(), char.uuid);
+          }
+        }
+        if (nuLookup.has(PROTO_ENDPOINTS.PROV_SESSION) && nuLookup.has(PROTO_ENDPOINTS.PROTO_VER)) {
+          this.service = service;
+          this.nuLookup = nuLookup;
+          break;
         }
       }
+      if (!this.service) throw new Error('No provisioning service found among authorized BLE services');
 
       console.debug('BLE discovered characteristics:', this.nuLookup);
       this.connected = true;
     } catch (error) {
-      this.connected = false;
+      this.disconnect();
       throw new Error(`BLE connection failed: ${error}`);
     }
   }
@@ -73,6 +85,7 @@ export class BLETransport extends Transport {
     }
     this.server = undefined;
     this.service = undefined;
+    this.nuLookup.clear();
     this.connected = false;
   }
 
